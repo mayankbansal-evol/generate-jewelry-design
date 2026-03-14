@@ -1,15 +1,13 @@
 import type { Metadata } from "next";
-import { Playfair_Display, Lato, Geist_Mono, Geist } from "next/font/google";
+import { Playfair_Display, Lato, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { cn } from "@/lib/utils";
-
-const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 const playfair = Playfair_Display({
   variable: "--font-playfair",
   subsets: ["latin"],
   display: "swap",
   weight: ["400", "500", "600", "700", "800"],
+  style: ["normal", "italic"],
 });
 
 const lato = Lato({
@@ -27,19 +25,17 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Jewelry Builder — AI Design Studio",
-  description: "Describe your dream jewelry and get 3 photorealistic AI-generated designs.",
+  description:
+    "Describe your dream jewelry and get 3 photorealistic AI-generated designs.",
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={cn("font-sans", geist.variable)}>
+    <html lang="en">
       <body
         className={`${playfair.variable} ${lato.variable} ${geistMono.variable} antialiased`}
-        style={{ fontFamily: "var(--font-lato), sans-serif" }}
       >
         {children}
       </body>

@@ -1,7 +1,13 @@
 'use client'
 
-import { useRef, useEffect, useState, FormEvent } from 'react'
+import { useRef, useEffect, useState, FormEvent, useCallback } from 'react'
 import { AIQuestion, QAExchange, Message } from '@/types'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Card } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
+import { cn } from '@/lib/utils'
+import { Check, Pencil, ArrowRight, X } from 'lucide-react'
 
 export interface ChatInterfaceProps {
   qaHistory: QAExchange[]
@@ -10,8 +16,11 @@ export interface ChatInterfaceProps {
   showCustomInput: boolean
   onChoiceSelected: (answer: string) => void
   onShowCustomInput: () => void
+  onHideCustomInput: () => void
   typedMessages: Message[]
 }
+
+const INPUT_YOUR_OWN = "Input your own"
 
 export default function ChatInterface({
   qaHistory,
@@ -20,276 +29,185 @@ export default function ChatInterface({
   showCustomInput,
   onChoiceSelected,
   onShowCustomInput,
+  onHideCustomInput,
 }: ChatInterfaceProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
   const [customText, setCustomText] = useState('')
 
-  // Auto-scroll to the latest content
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [qaHistory, currentQuestion, isLoading])
 
-  const handleCustomSubmit = (e: FormEvent) => {
-    e.preventDefault()
+  // Focus the input when it appears
+  useEffect(() => {
+    if (showCustomInput) {
+      setTimeout(() => inputRef.current?.focus(), 50)
+    } else {
+      setCustomText('')
+    }
+  }, [showCustomInput])
+
+  const handleCustomSubmit = useCallback((e?: FormEvent) => {
+    e?.preventDefault()
     if (!customText.trim()) return
     onChoiceSelected(customText.trim())
     setCustomText('')
-  }
+  }, [customText, onChoiceSelected])
+
+  const allChoices = currentQuestion
+    ? [...currentQuestion.choices, INPUT_YOUR_OWN]
+    : []
 
   return (
-    <div
-      style={{
-        width: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        gap: '2rem',
-      }}
-    >
-      {/* ── Q&A History ─────────────────────────────────────── */}
+    <div className="w-full flex flex-col items-center gap-6">
+
+      {/* ── Q&A History ─────────────────────────────────────────── */}
       {qaHistory.length > 0 && (
-        <div
-          style={{
-            width: '100%',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '1rem',
-          }}
-        >
+        <div className="w-full flex flex-col gap-2">
           {qaHistory.map((exchange, i) => (
-            <div
+            <Card
               key={i}
-              className="animate-fade-up"
-              style={{
-                background: 'var(--white)',
-                border: '1.5px solid var(--cream-border)',
-                borderRadius: '18px',
-                padding: '1.2rem 1.6rem',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '1rem',
-                flexWrap: 'wrap',
-                boxShadow: 'var(--shadow-soft)',
-              }}
+              className="animate-fade-up flex items-center justify-between gap-4 flex-wrap px-5 py-4 border-border shadow-none"
             >
-              <span
-                style={{
-                  color: 'var(--text-secondary)',
-                  fontSize: '0.95rem',
-                  fontWeight: 400,
-                  flex: 1,
-                }}
-              >
+              <span className="text-muted-foreground text-sm flex-1 min-w-0">
                 {exchange.question}
               </span>
-              <span
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.4rem',
-                  background: 'linear-gradient(135deg, #FFF8E7, #FFF0CC)',
-                  border: '1.5px solid var(--gold-muted)',
-                  borderRadius: '99px',
-                  padding: '0.4rem 1.1rem',
-                  color: 'var(--gold-dark)',
-                  fontSize: '0.95rem',
-                  fontWeight: 700,
-                  whiteSpace: 'nowrap',
-                  flexShrink: 0,
-                }}
-              >
-                <span style={{ fontSize: '0.8rem' }}>✓</span>
+              <span className="inline-flex items-center gap-1.5 bg-[--gold]/10 border border-[--gold-muted] rounded-full px-3 py-1 text-[--gold-dark] text-sm font-semibold shrink-0">
+                <Check className="w-3 h-3" />
                 {exchange.answer}
               </span>
-            </div>
+            </Card>
           ))}
         </div>
       )}
 
-      {/* ── Current Question ─────────────────────────────────── */}
+      {/* ── Current Question ─────────────────────────────────────── */}
       {currentQuestion && !isLoading && (
-        <div
-          className="animate-fade-up"
-          style={{
-            width: '100%',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: '2rem',
-          }}
-        >
+        <div className="animate-fade-up w-full flex flex-col items-center gap-6">
+
           {/* Question text */}
-          <div style={{ textAlign: 'center' }}>
-            <p
-              style={{
-                fontSize: '0.8rem',
-                fontWeight: 700,
-                letterSpacing: '0.14em',
-                textTransform: 'uppercase',
-                color: 'var(--gold)',
-                marginBottom: '0.75rem',
-              }}
-            >
-              Question {qaHistory.length + 1}
-            </p>
-            <h2
-              className="font-display"
-              style={{
-                fontSize: 'clamp(1.5rem, 3vw, 2.2rem)',
-                fontWeight: 600,
-                color: 'var(--text-primary)',
-                lineHeight: 1.25,
-                maxWidth: '640px',
-              }}
-            >
+          <div className="text-center">
+            <h2 className="font-display text-2xl sm:text-3xl font-semibold text-foreground leading-snug max-w-xl">
               {currentQuestion.question}
             </h2>
           </div>
 
-          {/* Choice cards — 2-column grid */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(2, 1fr)',
-              gap: '1rem',
-              width: '100%',
-              maxWidth: '720px',
-            }}
-          >
-            {currentQuestion.choices.map((choice, i) => {
-              const isOther =
-                choice.toLowerCase().includes('other') ||
-                choice.toLowerCase().includes('something else') ||
-                choice.toLowerCase().includes('tell me more') ||
-                choice.toLowerCase().includes('type your own')
+          {/* Choice grid */}
+          <div className="grid grid-cols-2 gap-3 w-full max-w-2xl">
+            {allChoices.map((choice, i) => {
+              const isCustom = choice === INPUT_YOUR_OWN
 
+              // "Input your own" slot — transforms into inline input when clicked
+              if (isCustom) {
+                return showCustomInput ? (
+                  // ── Expanded: inline input in-place ──────────────
+                  <form
+                    key="custom-input"
+                    onSubmit={handleCustomSubmit}
+                    className="col-span-2 animate-fade-in"
+                  >
+                    <div className="flex items-center gap-0 rounded-xl border-2 border-[--gold-light] bg-card overflow-hidden shadow-sm focus-within:border-[--gold] transition-all">
+                      {/* Cancel — go back to choices (left side) */}
+                      <button
+                        type="button"
+                        onClick={() => { onHideCustomInput(); setCustomText('') }}
+                        aria-label="Cancel and go back to choices"
+                        className="h-14 w-12 shrink-0 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors cursor-pointer border-r border-border"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                      <input
+                        ref={inputRef}
+                        type="text"
+                        value={customText}
+                        onChange={(e) => setCustomText(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleCustomSubmit()}
+                        placeholder="Describe what you have in mind..."
+                        className="flex-1 h-14 px-4 text-sm bg-transparent outline-none text-foreground placeholder:text-muted-foreground/60"
+                      />
+                      {/* Submit (right side) */}
+                      <button
+                        type="submit"
+                        disabled={!customText.trim()}
+                        aria-label="Submit answer"
+                        className={cn(
+                          'h-14 w-12 shrink-0 flex items-center justify-center transition-all border-l border-border',
+                          customText.trim()
+                            ? 'bg-foreground text-background hover:opacity-80 cursor-pointer'
+                            : 'bg-muted text-muted-foreground cursor-not-allowed',
+                        )}
+                      >
+                        <ArrowRight className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  // ── Collapsed: dashed button ───────────────────
+                  <button
+                    key="custom-btn"
+                    onClick={onShowCustomInput}
+                    className={cn(
+                      'col-span-2 flex items-center justify-center gap-2 min-h-[48px] px-5 py-3 rounded-xl',
+                      'border-2 border-dashed border-border text-muted-foreground text-sm font-medium',
+                      'cursor-pointer transition-all duration-150',
+                      'hover:border-[--gold] hover:text-[--gold-dark]',
+                      'active:scale-[0.98]',
+                    )}
+                    style={{ animationDelay: `${i * 50}ms` }}
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                    {choice}
+                  </button>
+                )
+              }
+
+              // ── Regular choice button ────────────────────────────
               return (
                 <button
                   key={i}
                   onClick={() => {
-                    if (isOther) {
-                      onShowCustomInput()
-                    } else {
-                      onChoiceSelected(choice)
-                    }
+                    if (showCustomInput) onHideCustomInput()
+                    onChoiceSelected(choice)
                   }}
-                  className="tap-card"
-                  style={{
-                    animationDelay: `${i * 60}ms`,
-                    animationFillMode: 'both',
-                    animation: 'fadeUp 0.4s cubic-bezier(0.22,1,0.36,1) both',
-                  }}
-                >
-                  {isOther ? (
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <span style={{ fontSize: '1.1rem' }}>✏️</span>
-                      {choice}
-                    </span>
-                  ) : (
-                    choice
+                  className={cn(
+                    'flex items-center justify-center text-center min-h-[68px] px-5 py-4 rounded-xl',
+                    'text-sm font-semibold leading-snug',
+                    'border border-border bg-card text-foreground shadow-sm',
+                    'cursor-pointer transition-all duration-150 active:scale-[0.97]',
+                    showCustomInput
+                      ? 'opacity-40 hover:opacity-100 hover:border-[--gold] hover:text-[--gold-dark]'
+                      : 'hover:border-[--gold] hover:text-[--gold-dark] hover:-translate-y-0.5 hover:shadow-md',
                   )}
+                  style={{ animationDelay: `${i * 50}ms` }}
+                >
+                  {choice}
                 </button>
               )
             })}
           </div>
-
-          {/* Custom text input — shown when "Other" is tapped */}
-          {showCustomInput && (
-            <form
-              onSubmit={handleCustomSubmit}
-              className="animate-fade-up"
-              style={{
-                width: '100%',
-                maxWidth: '720px',
-                display: 'flex',
-                gap: '0.75rem',
-              }}
-            >
-              <input
-                type="text"
-                value={customText}
-                onChange={(e) => setCustomText(e.target.value)}
-                autoFocus
-                placeholder="Type your answer here..."
-                style={{
-                  flex: 1,
-                  padding: '1rem 1.4rem',
-                  fontSize: '1.05rem',
-                  border: '2px solid var(--gold)',
-                  borderRadius: '14px',
-                  background: 'var(--white)',
-                  color: 'var(--text-primary)',
-                  outline: 'none',
-                  fontFamily: 'inherit',
-                  boxShadow: '0 0 0 4px rgba(201,168,76,0.12)',
-                }}
-              />
-              <button
-                type="submit"
-                disabled={!customText.trim()}
-                className="btn-gold"
-                style={{ padding: '1rem 1.8rem', fontSize: '1rem' }}
-              >
-                Confirm
-              </button>
-            </form>
-          )}
         </div>
       )}
 
-      {/* ── Loading / Thinking ───────────────────────────────── */}
+      {/* ── Loading Skeleton ───────────────────────────────────── */}
       {isLoading && (
-        <div
-          className="animate-fade-in"
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: '1.2rem',
-            padding: '2.5rem',
-          }}
-        >
-          <div
-            style={{
-              width: '60px',
-              height: '60px',
-              borderRadius: '50%',
-              background: 'linear-gradient(135deg, #FFF8E7, #FFF0CC)',
-              border: '2px solid var(--gold-muted)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '1.5rem',
-            }}
-          >
-            ✦
+        <div className="animate-fade-in w-full max-w-2xl flex flex-col items-center gap-6 py-6">
+          {/* Question text skeleton */}
+          <div className="flex flex-col gap-2 w-full max-w-lg text-center">
+            <Skeleton className="h-7 w-3/4 mx-auto rounded-md" />
+            <Skeleton className="h-7 w-1/2 mx-auto rounded-md" />
           </div>
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            {[0, 1, 2].map((i) => (
-              <span
+
+          {/* Choice buttons skeleton — 2x2 grid */}
+          <div className="grid grid-cols-2 gap-3 w-full">
+            {[0, 1, 2, 3].map((i) => (
+              <Skeleton
                 key={i}
-                style={{
-                  width: '10px',
-                  height: '10px',
-                  borderRadius: '50%',
-                  background: 'var(--gold)',
-                  display: 'block',
-                  animation: `bounce-dot 1.2s ease-in-out ${i * 0.2}s infinite`,
-                }}
+                className="min-h-[68px] rounded-xl"
+                style={{ animationDelay: `${i * 100}ms` }}
               />
             ))}
           </div>
-          <p
-            style={{
-              color: 'var(--text-muted)',
-              fontSize: '1rem',
-              letterSpacing: '0.05em',
-              fontWeight: 300,
-            }}
-          >
-            Thinking...
-          </p>
         </div>
       )}
 

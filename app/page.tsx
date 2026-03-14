@@ -3,14 +3,14 @@
 import { useChat } from "ai/react";
 import { useJewelryStore } from "@/stores/jewelryStore";
 import ChatInterface from "@/components/ChatInterface";
-import GenerateButton from "@/components/GenerateButton";
 import ImageGallery from "@/components/ImageGallery";
+import PromptInput from "@/components/PromptInput";
 import { Message, AIQuestion, QAExchange } from "@/types";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import Image from "next/image";
-import { AlertTriangle, ArrowRight } from "lucide-react";
+import { X, AlertTriangle } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
-// Parse a JSON block from an AI message
 function parseAIMessage(
   content: string,
 ):
@@ -29,9 +29,7 @@ function parseAIMessage(
 export default function JewelryBuilder() {
   const {
     appState,
-    designContext,
     images,
-    setDesignContext,
     setImages,
     setAppState,
     setError,
@@ -39,14 +37,34 @@ export default function JewelryBuilder() {
     reset,
   } = useJewelryStore();
 
-  // Q&A history for display (completed exchanges)
   const [qaHistory, setQaHistory] = useState<QAExchange[]>([]);
-  // The current pending question (if the last AI message was a question)
-  const [currentQuestion, setCurrentQuestion] = useState<AIQuestion | null>(
-    null,
-  );
-  // Whether to show the free-text input (for "Other" choice)
+  const [currentQuestion, setCurrentQuestion] = useState<AIQuestion | null>(null);
   const [showCustomInput, setShowCustomInput] = useState(false);
+  // Prevent sending the initial prompt twice
+  const promptSentRef = useRef(false);
+
+  // Auto-generate when LLM sends status:ready
+  const triggerGeneration = useCallback(async (params: Record<string, unknown>) => {
+    setAppState("generating");
+    setError(null);
+    try {
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ params }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error ?? "Generation failed");
+      }
+      const { images } = await res.json();
+      setImages(images);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Image generation failed";
+      setError(message);
+      setAppState("done");
+    }
+  }, [setAppState, setError, setImages]);
 
   const { messages, append, isLoading, setMessages } = useChat({
     api: "/api/chat",
@@ -60,16 +78,10 @@ export default function JewelryBuilder() {
       } else if (
         "status" in parsed &&
         parsed.status === "ready" &&
-        parsed.params &&
-        parsed.summary
+        parsed.params
       ) {
         setCurrentQuestion(null);
-        setDesignContext({
-          params: parsed.params as unknown as Parameters<
-            typeof setDesignContext
-          >[0]["params"],
-          summary: parsed.summary as string,
-        });
+        triggerGeneration(parsed.params);
       }
     },
     onError: (err) => {
@@ -77,12 +89,25 @@ export default function JewelryBuilder() {
     },
   });
 
-  // Called when user taps a choice card OR submits custom text
+  // Called when the user submits their initial free-form description from PromptInput
+  const handleInitialPrompt = useCallback(async (description: string) => {
+    if (promptSentRef.current) return;
+    promptSentRef.current = true;
+
+    setAppState("gathering");
+
+    // Record the initial description as the first Q&A exchange
+    setQaHistory([{ question: "What kind of jewelry do you want?", answer: description }]);
+
+    // Send directly to LLM — it drives all follow-up questions
+    await append({ role: "user", content: description });
+  }, [append, setAppState]);
+
+  // Called when the user selects an answer to a follow-up question
   const handleAnswer = useCallback(
     async (answer: string) => {
       if (!answer.trim()) return;
 
-      // Record the exchange in history
       if (currentQuestion) {
         setQaHistory((prev) => [
           ...prev,
@@ -92,40 +117,10 @@ export default function JewelryBuilder() {
       setCurrentQuestion(null);
       setShowCustomInput(false);
 
-      // Send the answer as a user message
       await append({ role: "user", content: answer });
     },
     [currentQuestion, append],
   );
-
-  const handleGenerate = async () => {
-    const { designContext } = useJewelryStore.getState();
-    if (!designContext) return;
-
-    setAppState("generating");
-    setError(null);
-
-    try {
-      const res = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ params: designContext.params }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error ?? "Generation failed");
-      }
-
-      const { images } = await res.json();
-      setImages(images);
-    } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : "Image generation failed";
-      setError(message);
-      setAppState("ready");
-    }
-  };
 
   const handleReset = () => {
     reset();
@@ -133,179 +128,49 @@ export default function JewelryBuilder() {
     setQaHistory([]);
     setCurrentQuestion(null);
     setShowCustomInput(false);
-  };
-
-  // Kick off the conversation if idle
-  const handleStart = async () => {
-    setAppState("gathering");
-    await append({ role: "user", content: "I want to design some jewelry." });
+    promptSentRef.current = false;
   };
 
   const typedMessages = messages as unknown as Message[];
   const isIdle = appState === "idle";
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: "var(--cream)",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        padding: "3rem 1.5rem 5rem",
-      }}
-    >
-      {/* ── Header ─────────────────────────────────────────── */}
-      <header
-        style={{
-          width: "100%",
-          maxWidth: "860px",
-          marginBottom: "2.5rem",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        {/* Evol logo — always visible */}
+    <main className="min-h-screen bg-background flex flex-col items-center px-4 sm:px-6 py-12 pb-20">
+
+      {/* ── Header ──────────────────────────────────────────────── */}
+      <header className="w-full max-w-3xl mb-10 flex items-center justify-between">
         <Image
           src="/evol-logo.webp"
           alt="EVOL Jewels"
-          width={120}
-          height={48}
-          style={{ objectFit: "contain", objectPosition: "left" }}
+          width={110}
+          height={44}
+          className="object-contain object-left"
           priority
         />
-
-        {/* Start over — only shown once started */}
         {appState !== "idle" && (
-          <button
+          <Button
+            variant="outline"
+            size="sm"
             onClick={handleReset}
-            style={{
-              padding: "0.5rem 1.1rem",
-              fontSize: "0.82rem",
-              fontWeight: 600,
-              color: "var(--text-muted)",
-              background: "none",
-              border: "1px solid var(--cream-border)",
-              borderRadius: "8px",
-              cursor: "pointer",
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-              transition: "all 0.2s ease",
-              whiteSpace: "nowrap",
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.borderColor =
-                "var(--text-primary)";
-              (e.currentTarget as HTMLElement).style.color =
-                "var(--text-primary)";
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.borderColor =
-                "var(--cream-border)";
-              (e.currentTarget as HTMLElement).style.color =
-                "var(--text-muted)";
-            }}
+            className="text-xs uppercase tracking-widest text-muted-foreground cursor-pointer"
           >
             Start Over
-          </button>
+          </Button>
         )}
       </header>
 
-      {/* ── Main content column ─────────────────────────────── */}
-      <div
-        style={{
-          width: "100%",
-          maxWidth: "860px",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          gap: "2.5rem",
-        }}
-      >
-        {/* IDLE — welcome state */}
-        {isIdle && (
-          <div
-            className="animate-fade-up"
-            style={{
-              textAlign: "center",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: "2.5rem",
-              padding: "4rem 2.5rem",
-              background: "var(--white)",
-              border: "1px solid var(--cream-border)",
-              borderRadius: "24px",
-              width: "100%",
-            }}
-          >
-            {/* Heading + subheading */}
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "0.9rem",
-              }}
-            >
-              <h2
-                className="font-display"
-                style={{
-                  fontSize: "clamp(1.8rem, 3.5vw, 2.6rem)",
-                  fontWeight: 700,
-                  color: "var(--text-primary)",
-                  lineHeight: 1.2,
-                  letterSpacing: "-0.01em",
-                }}
-              >
-                Create your own Evol Jewelry Design
-              </h2>
-              <p
-                style={{
-                  fontSize: "clamp(1rem, 1.8vw, 1.15rem)",
-                  color: "var(--text-secondary)",
-                  maxWidth: "460px",
-                  lineHeight: 1.65,
-                  fontWeight: 300,
-                  margin: "0 auto",
-                }}
-              >
-                Answer a few questions and get jewelry designs crafted just for
-                you.
-              </p>
-            </div>
+      {/* ── Content column ──────────────────────────────────────── */}
+      <div className="w-full max-w-3xl flex flex-col items-center gap-8">
 
-            {/* Clean minimal button */}
-            <button
-              onClick={handleStart}
-              style={{
-                padding: "0.95rem 3rem",
-                fontSize: "1rem",
-                fontWeight: 700,
-                letterSpacing: "0.08em",
-                textTransform: "uppercase",
-                color: "var(--white)",
-                background: "var(--text-primary)",
-                border: "none",
-                borderRadius: "6px",
-                cursor: "pointer",
-                transition: "opacity 0.2s ease",
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLElement).style.opacity = "0.8";
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLElement).style.opacity = "1";
-              }}
-            >
-              <span>Begin Designing</span>
-              <ArrowRight />
-            </button>
+        {/* IDLE — freeform prompt input (wireframe style), centered in viewport */}
+        {isIdle && (
+          <div className="flex-1 flex items-center justify-center w-full min-h-[calc(100vh-12rem)]">
+            <PromptInput onSubmit={handleInitialPrompt} isLoading={isLoading} />
           </div>
         )}
 
-        {/* GATHERING / ACTIVE — Q&A interface */}
-        {appState !== "idle" && (
+        {/* GATHERING — Q&A flow (after initial prompt is submitted) */}
+        {appState === "gathering" && (
           <ChatInterface
             qaHistory={qaHistory}
             currentQuestion={currentQuestion}
@@ -313,104 +178,54 @@ export default function JewelryBuilder() {
             showCustomInput={showCustomInput}
             onChoiceSelected={handleAnswer}
             onShowCustomInput={() => setShowCustomInput(true)}
+            onHideCustomInput={() => setShowCustomInput(false)}
+            typedMessages={typedMessages}
+          />
+        )}
+
+        {/* Keep Q&A history visible during generation and done states */}
+        {(appState === "generating" || appState === "done") && qaHistory.length > 0 && (
+          <ChatInterface
+            qaHistory={qaHistory}
+            currentQuestion={null}
+            isLoading={false}
+            showCustomInput={false}
+            onChoiceSelected={() => {}}
+            onShowCustomInput={() => {}}
+            onHideCustomInput={() => {}}
             typedMessages={typedMessages}
           />
         )}
 
         {/* Error banner */}
         {error && (
-          <div
-            className="animate-fade-up"
-            style={{
-              width: "100%",
-              padding: "1rem 1.5rem",
-              background: "#FFF5F5",
-              border: "1.5px solid #FECACA",
-              borderRadius: "16px",
-              display: "flex",
-              alignItems: "flex-start",
-              gap: "1rem",
-            }}
-          >
-            <span
-              style={{ color: "#EF4444", fontSize: "1.2rem", flexShrink: 0 }}
-            >
-              <AlertTriangle />
-            </span>
-            <div style={{ flex: 1 }}>
-              <p
-                style={{
-                  color: "#B91C1C",
-                  fontWeight: 700,
-                  fontSize: "1rem",
-                  marginBottom: "0.2rem",
-                }}
-              >
-                Something went wrong
-              </p>
-              <p style={{ color: "#DC2626", fontSize: "0.9rem" }}>{error}</p>
+          <div className="animate-fade-up w-full flex items-start gap-3 bg-destructive/5 border border-destructive/20 rounded-xl p-4">
+            <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-destructive font-semibold text-sm">Something went wrong</p>
+              <p className="text-destructive/80 text-sm mt-0.5">{error}</p>
             </div>
             <button
               onClick={() => setError(null)}
-              style={{
-                color: "#EF4444",
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                fontSize: "1.2rem",
-                lineHeight: 1,
-                padding: "0.1rem",
-              }}
+              aria-label="Dismiss error"
+              className="text-destructive/50 hover:text-destructive transition-colors cursor-pointer shrink-0"
             >
-              ✕
+              <X className="w-4 h-4" />
             </button>
           </div>
         )}
-
-        {/* READY / GENERATING — design summary + CTA */}
-        {(appState === "ready" || appState === "generating") &&
-          designContext && (
-            <GenerateButton
-              onClick={handleGenerate}
-              designContext={designContext}
-              isGenerating={appState === "generating"}
-            />
-          )}
 
         {/* GENERATING / DONE — image gallery */}
         {(appState === "generating" || appState === "done") && (
           <ImageGallery images={images} isLoading={appState === "generating"} />
         )}
 
-        {/* DONE — start over prompt */}
+        {/* DONE — start over */}
         {appState === "done" && images.length > 0 && (
-          <div
-            className="animate-fade-up"
-            style={{
-              textAlign: "center",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: "1.2rem",
-            }}
-          >
-            <p style={{ color: "var(--text-secondary)", fontSize: "1.05rem" }}>
-              Tap any image to view it full size
-            </p>
+          <div className="animate-fade-up flex flex-col items-center gap-3 text-center">
             <button
               onClick={handleReset}
-              style={{
-                color: "var(--gold-dark)",
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                fontSize: "1rem",
-                fontWeight: 700,
-                letterSpacing: "0.04em",
-                textDecoration: "underline",
-                textUnderlineOffset: "4px",
-                textTransform: "uppercase",
-              }}
+              className="text-[--gold-dark] font-bold text-xs uppercase tracking-widest underline underline-offset-4 hover:opacity-70 transition-opacity cursor-pointer"
             >
               Design Something Else →
             </button>

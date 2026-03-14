@@ -1,5 +1,5 @@
 // App-level state machine
-export type AppState = 'idle' | 'gathering' | 'ready' | 'generating' | 'done'
+export type AppState = 'idle' | 'gathering' | 'generating' | 'done'
 
 // Chat message
 export interface Message {
@@ -8,26 +8,24 @@ export interface Message {
   content: string
 }
 
-// Jewelry types supported
-export type JewelryType = 'ring' | 'necklace' | 'earrings' | 'bracelet'
+// Known jewelry types used for template selection (loose string allows custom types)
+export type KnownJewelryType = 'ring' | 'necklace' | 'earrings' | 'bracelet'
+
+// JewelryType is now open — any string is valid (e.g. 'glasses frames', 'anklet', 'tiara')
+export type JewelryType = KnownJewelryType | string
 
 // Base params shared across all jewelry types
 export interface BaseJewelryParams {
-  type: JewelryType
-  metal: string        // 'yellow gold', 'platinum', 'sterling silver', etc.
-  finish?: string      // 'polished', 'brushed', 'hammered'
-  style: string        // 'solitaire', 'halo', 'minimalist', 'vintage', etc.
-  gemstone?: string    // 'emerald cut diamond', 'no stones', etc.
-  occasion?: string    // 'engagement', 'everyday', 'gift', etc.
+  type: JewelryType          // 'ring', 'glasses frames', 'anklet', etc.
+  metal: string              // 'yellow gold', 'platinum', 'sterling silver', etc.
+  finish?: string            // 'polished', 'brushed', 'hammered'
+  style: string              // 'solitaire', 'halo', 'minimalist', 'vintage', etc.
+  gemstone?: string          // 'emerald cut diamond', 'no stones', etc.
+  occasion?: string          // 'engagement', 'everyday', 'gift', etc.
+  details?: string           // any extra freeform detail the LLM captured
 }
 
-export type JewelryParams = BaseJewelryParams & { type: JewelryType }
-
-// The structured context GPT-4o-mini produces when it has enough info
-export interface DesignContext {
-  params: JewelryParams
-  summary: string  // 2-sentence human-readable summary
-}
+export type JewelryParams = BaseJewelryParams
 
 // A single generated image
 export interface GeneratedImage {
@@ -35,7 +33,7 @@ export interface GeneratedImage {
   revisedPrompt?: string
 }
 
-// A question-with-choices the AI sends (new structured format)
+// A question-with-choices the AI sends (structured format)
 export interface AIQuestion {
   type: 'question'
   question: string
