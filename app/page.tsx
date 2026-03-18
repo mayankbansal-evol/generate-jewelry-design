@@ -1,237 +1,110 @@
-"use client";
+"use client"
 
-import { useChat } from "ai/react";
-import { useJewelryStore } from "@/stores/jewelryStore";
-import ChatInterface from "@/components/ChatInterface";
-import ImageGallery from "@/components/ImageGallery";
-import PromptInput from "@/components/PromptInput";
-import { Message, AIQuestion, QAExchange } from "@/types";
-import { useState, useCallback, useRef } from "react";
-import Image from "next/image";
-import { X, AlertTriangle } from "lucide-react";
-import { Button } from "@/components/ui/button";
-
-function parseAIMessage(
-  content: string,
-):
-  | AIQuestion
-  | { status: string; summary: string; params: Record<string, unknown> }
-  | null {
-  const match = content.match(/```json\n([\s\S]*?)\n```/);
-  if (!match) return null;
-  try {
-    return JSON.parse(match[1]);
-  } catch {
-    return null;
-  }
-}
+import { useEffect } from "react"
+import { useJewelryStore } from "@/stores/jewelryStore"
+import PromptInput from "@/components/PromptInput"
+import ChatScreen from "@/components/ChatScreen"
+import HistoryDrawer from "@/components/HistoryDrawer"
+import Image from "next/image"
+import { cn } from "@/lib/utils"
+import { History, Plus } from "lucide-react"
 
 export default function JewelryBuilder() {
   const {
-    appState,
-    images,
-    setImages,
-    setAppState,
-    setError,
-    error,
+    view,
+    isHydrated,
+    drawerOpen,
+    activeConversationId,
+    setDrawerOpen,
+    startNewConversation,
     reset,
-  } = useJewelryStore();
+    hydrate,
+  } = useJewelryStore()
 
-  const [qaHistory, setQaHistory] = useState<QAExchange[]>([]);
-  const [currentQuestion, setCurrentQuestion] = useState<AIQuestion | null>(null);
-  const [showCustomInput, setShowCustomInput] = useState(false);
-  // Prevent sending the initial prompt twice
-  const promptSentRef = useRef(false);
+  useEffect(() => {
+    hydrate()
+  }, [hydrate])
 
-  // Auto-generate when LLM sends status:ready
-  const triggerGeneration = useCallback(async (params: Record<string, unknown>) => {
-    setAppState("generating");
-    setError(null);
-    try {
-      const res = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ params }),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error ?? "Generation failed");
-      }
-      const { images } = await res.json();
-      setImages(images);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Image generation failed";
-      setError(message);
-      setAppState("done");
-    }
-  }, [setAppState, setError, setImages]);
+  const isHome = view === "home"
+  const isChat = view === "chat" && activeConversationId
 
-  const { messages, append, isLoading, setMessages } = useChat({
-    api: "/api/chat",
-    onFinish: (message) => {
-      const parsed = parseAIMessage(message.content);
-      if (!parsed) return;
-
-      if ("type" in parsed && parsed.type === "question") {
-        setCurrentQuestion(parsed as AIQuestion);
-        setShowCustomInput(false);
-      } else if (
-        "status" in parsed &&
-        parsed.status === "ready" &&
-        parsed.params
-      ) {
-        setCurrentQuestion(null);
-        triggerGeneration(parsed.params);
-      }
-    },
-    onError: (err) => {
-      setError(err.message ?? "Chat error. Please try again.");
-    },
-  });
-
-  // Called when the user submits their initial free-form description from PromptInput
-  const handleInitialPrompt = useCallback(async (description: string) => {
-    if (promptSentRef.current) return;
-    promptSentRef.current = true;
-
-    setAppState("gathering");
-
-    // Record the initial description as the first Q&A exchange
-    setQaHistory([{ question: "What kind of jewelry do you want?", answer: description }]);
-
-    // Send directly to LLM — it drives all follow-up questions
-    await append({ role: "user", content: description });
-  }, [append, setAppState]);
-
-  // Called when the user selects an answer to a follow-up question
-  const handleAnswer = useCallback(
-    async (answer: string) => {
-      if (!answer.trim()) return;
-
-      if (currentQuestion) {
-        setQaHistory((prev) => [
-          ...prev,
-          { question: currentQuestion.question, answer },
-        ]);
-      }
-      setCurrentQuestion(null);
-      setShowCustomInput(false);
-
-      await append({ role: "user", content: answer });
-    },
-    [currentQuestion, append],
-  );
-
-  const handleReset = () => {
-    reset();
-    setMessages([]);
-    setQaHistory([]);
-    setCurrentQuestion(null);
-    setShowCustomInput(false);
-    promptSentRef.current = false;
-  };
-
-  const typedMessages = messages as unknown as Message[];
-  const isIdle = appState === "idle";
+  if (!isHydrated) {
+    return (
+      <main className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Image src="/evol-logo.webp" alt="EVOL Jewels" width={80} height={32} className="object-contain opacity-30" priority />
+          <div className="flex items-center gap-1.5">
+            {[0, 1, 2].map((i) => (
+              <span key={i} className="w-1.5 h-1.5 rounded-full bg-foreground/20"
+                style={{ animation: "bounce-dot 1.2s ease-in-out infinite", animationDelay: `${i * 0.15}s` }} />
+            ))}
+          </div>
+        </div>
+      </main>
+    )
+  }
 
   return (
-    <main className="min-h-screen bg-background flex flex-col items-center px-4 sm:px-6 py-12 pb-20">
+    <main className="h-screen bg-background flex flex-col overflow-hidden">
+      <HistoryDrawer />
 
-      {/* ── Header ──────────────────────────────────────────────── */}
-      <header className="w-full max-w-3xl mb-10 flex items-center justify-between">
-        <Image
-          src="/evol-logo.webp"
-          alt="EVOL Jewels"
-          width={110}
-          height={44}
-          className="object-contain object-left"
-          priority
-        />
-        {appState !== "idle" && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleReset}
-            className="text-xs uppercase tracking-widest text-muted-foreground cursor-pointer"
+      {/* ── Header — borderless, part of the page ───────────────── */}
+      <header className="w-full shrink-0 z-30 px-5 sm:px-8 pt-5 pb-2">
+        <div className="max-w-3xl mx-auto flex items-center justify-between">
+
+          {/* Left: single menu button */}
+          <button
+            onClick={() => setDrawerOpen(!drawerOpen)}
+            className={cn(
+              "w-9 h-9 rounded-lg flex items-center justify-center transition-all duration-150 cursor-pointer",
+              drawerOpen
+                ? "bg-foreground text-background"
+                : "text-foreground/40 hover:text-foreground hover:bg-foreground/5",
+            )}
+            title="History"
           >
-            Start Over
-          </Button>
-        )}
+            <History className="w-[18px] h-[18px]" />
+          </button>
+
+          {/* Center: logo */}
+          <div className="absolute left-1/2 -translate-x-1/2">
+            <Image
+              src="/evol-logo.webp"
+              alt="EVOL Jewels"
+              width={76}
+              height={30}
+              className="object-contain"
+              priority
+            />
+          </div>
+
+          {/* Right: New button (chat only) or invisible spacer */}
+          <div className="w-9 flex justify-end">
+            {isChat ? (
+              <button
+                onClick={() => reset()}
+                className="h-9 px-3 rounded-lg flex items-center gap-1.5 text-[13px] font-medium text-foreground/50 hover:text-foreground hover:bg-foreground/5 transition-all duration-150 cursor-pointer"
+                title="Start new"
+              >
+                <Plus className="w-[15px] h-[15px]" />
+                New
+              </button>
+            ) : (
+              <span className="w-9" />
+            )}
+          </div>
+        </div>
       </header>
 
-      {/* ── Content column ──────────────────────────────────────── */}
-      <div className="w-full max-w-3xl flex flex-col items-center gap-8">
-
-        {/* IDLE — freeform prompt input (wireframe style), centered in viewport */}
-        {isIdle && (
-          <div className="flex-1 flex items-center justify-center w-full min-h-[calc(100vh-12rem)]">
-            <PromptInput onSubmit={handleInitialPrompt} isLoading={isLoading} />
+      {/* ── Content ────────────────────────────────────────────── */}
+      <div className="flex-1 overflow-hidden relative">
+        {isHome && (
+          <div className="h-full flex items-center justify-center px-4 sm:px-6">
+            <PromptInput onSubmit={(d) => startNewConversation(d)} isLoading={false} />
           </div>
         )}
-
-        {/* GATHERING — Q&A flow (after initial prompt is submitted) */}
-        {appState === "gathering" && (
-          <ChatInterface
-            qaHistory={qaHistory}
-            currentQuestion={currentQuestion}
-            isLoading={isLoading}
-            showCustomInput={showCustomInput}
-            onChoiceSelected={handleAnswer}
-            onShowCustomInput={() => setShowCustomInput(true)}
-            onHideCustomInput={() => setShowCustomInput(false)}
-            typedMessages={typedMessages}
-          />
-        )}
-
-        {/* Keep Q&A history visible during generation and done states */}
-        {(appState === "generating" || appState === "done") && qaHistory.length > 0 && (
-          <ChatInterface
-            qaHistory={qaHistory}
-            currentQuestion={null}
-            isLoading={false}
-            showCustomInput={false}
-            onChoiceSelected={() => {}}
-            onShowCustomInput={() => {}}
-            onHideCustomInput={() => {}}
-            typedMessages={typedMessages}
-          />
-        )}
-
-        {/* Error banner */}
-        {error && (
-          <div className="animate-fade-up w-full flex items-start gap-3 bg-destructive/5 border border-destructive/20 rounded-xl p-4">
-            <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
-            <div className="flex-1 min-w-0">
-              <p className="text-destructive font-semibold text-sm">Something went wrong</p>
-              <p className="text-destructive/80 text-sm mt-0.5">{error}</p>
-            </div>
-            <button
-              onClick={() => setError(null)}
-              aria-label="Dismiss error"
-              className="text-destructive/50 hover:text-destructive transition-colors cursor-pointer shrink-0"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
-
-        {/* GENERATING / DONE — image gallery */}
-        {(appState === "generating" || appState === "done") && (
-          <ImageGallery images={images} isLoading={appState === "generating"} />
-        )}
-
-        {/* DONE — start over */}
-        {appState === "done" && images.length > 0 && (
-          <div className="animate-fade-up flex flex-col items-center gap-3 text-center">
-            <button
-              onClick={handleReset}
-              className="text-[--gold-dark] font-bold text-xs uppercase tracking-widest underline underline-offset-4 hover:opacity-70 transition-opacity cursor-pointer"
-            >
-              Design Something Else →
-            </button>
-          </div>
-        )}
+        {isChat && <ChatScreen />}
       </div>
     </main>
-  );
+  )
 }

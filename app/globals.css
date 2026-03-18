@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@400;500;700&family=Inter:wght@400;500;600&family=Great+Vibes&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 
@@ -5,6 +6,11 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  --font-primary: 'Playfair Display', serif;
+  --font-heading: 'DM Sans', sans-serif;
+  --font-body: 'Inter', sans-serif;
+  --font-script: 'Great Vibes', cursive;
+
   --background:         oklch(1 0 0);
   --foreground:         oklch(0.145 0 0);
   --card:               oklch(1 0 0);
@@ -86,13 +92,22 @@
 
   body {
     @apply bg-background text-foreground;
-    line-height: 1.65;
+    line-height: 1.6;
+    letter-spacing: 0.2px;
     min-height: 100vh;
   }
 
   h1, h2, h3 {
-    font-family: var(--font-playfair), Georgia, serif;
+    font-family: var(--font-primary);
     line-height: 1.2;
+  }
+
+  h3, h4, h5 {
+    font-family: var(--font-heading);
+  }
+
+  body, p {
+    font-family: var(--font-body);
   }
 }
 
@@ -121,6 +136,15 @@
 @keyframes bounce-dot {
   0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
   40%            { transform: scale(1);   opacity: 1; }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes scale-102 {
+  to { transform: scale(1.02); }
 }
 
 /* ─── Utility classes ────────────────────────────────────────── */

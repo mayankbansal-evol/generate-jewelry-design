@@ -1,47 +1,47 @@
-// App-level state machine
-export type AppState = 'idle' | 'gathering' | 'generating' | 'done'
+// ── View state ────────────────────────────────────────────────────
+export type AppView = 'home' | 'chat'
 
-// Chat message
-export interface Message {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-}
-
-// Known jewelry types used for template selection (loose string allows custom types)
+// ── Jewelry params (unchanged from before) ───────────────────────
 export type KnownJewelryType = 'ring' | 'necklace' | 'earrings' | 'bracelet'
-
-// JewelryType is now open — any string is valid (e.g. 'glasses frames', 'anklet', 'tiara')
 export type JewelryType = KnownJewelryType | string
 
-// Base params shared across all jewelry types
 export interface BaseJewelryParams {
-  type: JewelryType          // 'ring', 'glasses frames', 'anklet', etc.
-  metal: string              // 'yellow gold', 'platinum', 'sterling silver', etc.
-  finish?: string            // 'polished', 'brushed', 'hammered'
-  style: string              // 'solitaire', 'halo', 'minimalist', 'vintage', etc.
-  gemstone?: string          // 'emerald cut diamond', 'no stones', etc.
-  occasion?: string          // 'engagement', 'everyday', 'gift', etc.
-  details?: string           // any extra freeform detail the LLM captured
+  type: JewelryType
+  metal: string
+  finish?: string
+  style: string
+  gemstone?: string
+  occasion?: string
+  details?: string
 }
 
 export type JewelryParams = BaseJewelryParams
 
-// A single generated image
+// ── Generated image ──────────────────────────────────────────────
 export interface GeneratedImage {
   url: string
   revisedPrompt?: string
+  variantLabel?: string
+  params?: JewelryParams
 }
 
-// A question-with-choices the AI sends (structured format)
-export interface AIQuestion {
-  type: 'question'
-  question: string
-  choices: string[]
+// ── Chat message ─────────────────────────────────────────────────
+export interface ChatMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string              // text content
+  images?: GeneratedImage[]    // assistant messages may carry images
+  chips?: string[]             // assistant messages may carry suggestion chips
+  isLoading?: boolean          // optimistic placeholder while generating
+  timestamp: number
 }
 
-// A completed Q&A exchange in the conversation history
-export interface QAExchange {
-  question: string
-  answer: string
+// ── Conversation ─────────────────────────────────────────────────
+export interface Conversation {
+  id: string
+  title: string                // first ~60 chars of user's first prompt
+  createdAt: number
+  updatedAt: number
+  messages: ChatMessage[]
+  currentParams?: JewelryParams // latest resolved params for next refinement
 }
